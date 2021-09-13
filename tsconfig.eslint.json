@@ -1,0 +1,5 @@
+{
+    "extends": "./tsconfig.json",
+    "include": ["src/**/*", "commitlint.config.js", ".umirc.ts"],
+    "exclude": ["node_modules", "dist", "typings", "**/__test__", "test", "scripts/*", "gulpfile.js"]
+}

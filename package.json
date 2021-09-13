@@ -1,0 +1,62 @@
+{
+  "private": true,
+  "name": "tree-like-data-utils-dumi",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "dumi dev",
+    "docs:build": "rimraf docs-dist && dumi build",
+    "docs:deploy": "gh-pages -d docs-dist",
+    "build": "rimraf es lib && father-build",
+    "deploy": "npm run docs:build && npm run docs:deploy",
+    "release": "npm run build && npm publish",
+    "lint": "eslint --fix src/**/*.{js,jsx,ts,tsx}",
+    "prettier": "prettier --write \"**/*.{js,jsx,tsx,ts,less,md,json}\"",
+    "prepare": "husky install",
+    "test": "umi-test",
+    "test:coverage": "umi-test --coverage"
+  },
+  "main": "lib/index.js",
+  "unpkg": "dist/index.umd.min.js",
+  "module": "es/index.js",
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "es",
+    "lib"
+  ],
+  "gitHooks": {
+    "pre-commit": "lint-staged"
+  },
+  "lint-staged": {
+    "*.{js,jsx,less,md,json}": [
+      "prettier --write"
+    ],
+    "*.ts?(x)": [
+      "prettier --parser=typescript --write"
+    ]
+  },
+  "dependencies": {
+    "lodash-es": "^4.17.21"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^13.1.0",
+    "@commitlint/config-conventional": "^13.1.0",
+    "@types/lodash-es": "^4.17.4",
+    "@typescript-eslint/eslint-plugin": "^4.31.0",
+    "@typescript-eslint/parser": "^4.31.0",
+    "@umijs/test": "^3.0.5",
+    "dumi": "^1.0.16",
+    "eslint": "^7.32.0",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-import": "^2.24.2",
+    "eslint-plugin-prettier": "^4.0.0",
+    "father-build": "^1.17.2",
+    "gh-pages": "^3.0.0",
+    "husky": "^7.0.2",
+    "lint-staged": "^10.0.7",
+    "prettier": "^2.2.1",
+    "react": "^16.12.0",
+    "rimraf": "^3.0.2",
+    "yorkie": "^2.0.0"
+  }
+}
