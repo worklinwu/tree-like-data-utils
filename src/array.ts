@@ -8,17 +8,17 @@ import type { TreeLikeArray, TreeLikeArrayItem, TreeNodeFieldAlias } from './typ
  * @param options 别名配置, 默认值为 { idKey: 'id', childrenKey: 'children' }
  */
 export function createTreeFromTreeLikeArray(array: TreeLikeArray, options?: TreeNodeFieldAlias): TreeLikeArray {
-    const { idKey = 'id', parentIdKey = 'pId' } = options || {};
-    const _idMap = Object.create(null);
+    const { idKey = 'id', parentIdKey = 'pId', childrenKey = 'children' } = options || {};
+    const idMapTemp = Object.create(null);
     const cloneData: typeof array = cloneDeep(array);
     cloneData.forEach((row: TreeLikeArrayItem): void => {
-        _idMap[row[idKey]] = row;
+        idMapTemp[row[idKey]] = row;
     });
     const result: TreeLikeArray = [];
     cloneData.forEach((row: TreeLikeArrayItem): void => {
-        const parent = _idMap[row[parentIdKey]];
+        const parent = idMapTemp[row[parentIdKey]];
         if (parent) {
-            const v = parent.children || (parent.children = []);
+            const v = parent[childrenKey] || (parent[childrenKey] = []);
             v.push(row);
         } else {
             result.push(row);
@@ -65,22 +65,22 @@ export function filterTreeArray(
 }
 
 /**
- * 向上查找所有父节点
+ * 向上查找所有父节点, 返回节点的数组
  * @param array 数组类型数据
  * @param node 要查找的节点
- * @param deep 遍历的深度
+ * @param depth 遍历的深度
  * @param options 别名配置, 默认值为 { idKey: 'id', childrenKey: 'children' }
  */
 export function closestParentItemInTreeArray(
     array: TreeLikeArray,
     node: TreeLikeArrayItem,
-    deep: false | number = false,
+    depth: false | number = false,
     options?: TreeNodeFieldAlias
 ): TreeLikeArray {
     const { idKey = 'id', parentIdKey = 'pId' } = options || {};
     const result: TreeLikeArray = [];
     let currentItem: TreeLikeArrayItem | undefined = node;
-    let deepLoopCount = typeof deep === 'number' ? deep : Infinity;
+    let deepLoopCount = typeof depth === 'number' ? depth : Infinity;
     const findItem: () => TreeLikeArrayItem | undefined = () => {
         const pId = currentItem?.[parentIdKey];
         if (pId) {
@@ -99,22 +99,22 @@ export function closestParentItemInTreeArray(
 }
 
 /**
- * 向上查找所有父节点 key 值
+ * 向上查找所有父节点 key 值, 返回 key 值的数组
  * @param array 数组类型数据
  * @param key 要查找的节点
- * @param deep 遍历的深度
+ * @param depth 遍历的深度
  * @param options 别名配置, 默认值为 { idKey: 'id', childrenKey: 'children' }
  */
 export function closestParentKeysInTreeArray(
     array: TreeLikeArray,
     key: keyof any,
-    deep: false | number = false,
+    depth: false | number = false,
     options?: TreeNodeFieldAlias
 ): string[] {
     const { idKey = 'id', parentIdKey = 'pId' } = options || {};
     const result: string[] = [];
     let currentItem: TreeLikeArrayItem | undefined = array.find((item: TreeLikeArrayItem) => item[idKey] === key);
-    let deepLoopCount: number = typeof deep === 'number' ? deep : Infinity;
+    let deepLoopCount: number = typeof depth === 'number' ? depth : Infinity;
     if (!currentItem) {
         return result;
     }
@@ -136,7 +136,7 @@ export function closestParentKeysInTreeArray(
 }
 
 /**
- * 向下查找所有子节点
+ * 向下查找所有子节点, 返回节点的数组
  * @param array 数组类型数据
  * @param targetNode 要查找的节点
  * @param options 别名配置, 默认值为 { idKey: 'id', childrenKey: 'children' }
@@ -162,7 +162,7 @@ export function findChildrenItemInTreeArray(
 }
 
 /**
- * 向下查找所有子节点
+ * 判断是否有子节点
  * @param array 数组类型数据
  * @param targetNode 要查找的节点
  * @param options 别名配置, 默认值为 { idKey: 'id', childrenKey: 'children' }

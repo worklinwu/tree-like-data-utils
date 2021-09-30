@@ -87,7 +87,7 @@ export function setToTree(tree: Tree, path: string | string[], value: unknown): 
  * @param options 别名配置, 默认值为 { childrenKey: 'children' }
  */
 export function flattenTree(tree: Tree, keepChildrenField = false, options?: TreeNodeFieldAlias): TreeNode[] {
-    const treeDataClone = cloneDeep(tree);
+    const treeDataClone = tree ? cloneDeep(tree) : null;
     const { childrenKey = 'children' } = options || {};
     const result: TreeNode[] = [];
     const deep = (data: TreeNode[]) => {
@@ -104,7 +104,7 @@ export function flattenTree(tree: Tree, keepChildrenField = false, options?: Tre
     };
     if (tree instanceof Array) {
         deep(treeDataClone as TreeNode[]);
-    } else {
+    } else if (treeDataClone) {
         deep([treeDataClone]);
     }
     return result;
@@ -148,27 +148,29 @@ function _traverse(
                 lastResult = result || undefined;
                 break;
             }
-        } else {
-            fn(node, options);
+        } else if (fn(node, options) === false) {
+            break;
         }
     }
     if (every) {
         if (returnBoolean) {
             return !didBreak;
-        } else if (returnArray) {
+        }
+        if (returnArray) {
             return results;
         }
     } else if (some) {
         if (returnBoolean) {
             return Boolean(lastResult);
-        } else if (returnArray) {
+        }
+        if (returnArray) {
             return results;
         }
     }
 }
 
 /**
- * 深度优先遍历数据
+ * 遍历树数据
  * @param tree 树数据
  * @param callbackFn 遍历函数
  * @param traverseType 遍历方式, 默认是广度优先
@@ -301,9 +303,8 @@ export function findIndexInSiblingNode(tree: Tree, targetNode: TreeNode, options
         return parentNode
             ? parentNode[childrenKey].findIndex((node: TreeNode) => node[idKey] === targetNode[idKey])
             : -1;
-    } else {
-        return 0;
     }
+    return 0;
 }
 
 /**
@@ -343,46 +344,6 @@ export function sortTree(
         return item;
     });
     return treeClone.sort(compareFn);
-}
-
-/**
- * 替换树节点数据
- * @param tree 树类型数据
- * @param predicate 匹配的方法
- * @param replaceNode 要替换的值
- * @returns {[]}
- */
-export function replaceTreeNode(
-    tree: Tree,
-    predicate: (node: TreeNode) => boolean,
-    replaceNode: ((node: TreeNode) => TreeNode) | TreeNode
-): Tree {
-    return mapTree(tree, (node) => {
-        if (predicate(node)) {
-            if (replaceNode instanceof Function) {
-                return replaceNode(node);
-            }
-            return replaceNode;
-        }
-        return node;
-    });
-}
-
-/**
- * 删除空的 children 节点
- * @param tree 树类型数据
- * @param options 别名配置, 默认值为 { childrenKey: 'children' }
- */
-export function removeEmptyChildrenTreeNode(tree: Tree, options?: TreeNodeFieldAlias): Tree {
-    const { childrenKey = 'children' } = options || {};
-    return mapTree(tree, (node) => {
-        if (Array.isArray(node[childrenKey]) && node[childrenKey].length) {
-            node[childrenKey] = removeEmptyChildrenTreeNode(node[childrenKey]);
-        } else if (node[childrenKey]) {
-            delete node[childrenKey];
-        }
-        return node;
-    });
 }
 
 /**
@@ -454,17 +415,137 @@ export function closestParentItemInTree(
 }
 
 /**
+ * 替换树节点数据
+ * @param tree 树类型数据
+ * @param predicate 匹配的方法
+ * @param replaceNode 要替换的值
+ * @returns {[]}
+ */
+export function replaceTreeNode(
+    tree: Tree,
+    predicate: (node: TreeNode) => boolean,
+    replaceNode: ((node: TreeNode) => TreeNode) | TreeNode
+): Tree {
+    return mapTree(tree, (node) => {
+        if (predicate(node)) {
+            if (replaceNode instanceof Function) {
+                return replaceNode(node);
+            }
+            return replaceNode;
+        }
+        return node;
+    });
+}
+
+/**
+ * 树节点数据
+ * @param tree 树类型数据
+ * @param predicate 匹配的方法
+ * @param updateProps 要替换的值
+ * @returns {[]}
+ */
+export function updateTreeNode(tree: Tree, predicate: (node: TreeNode) => boolean, updateProps: TreeNode): Tree {
+    return mapTree(tree, (node) => {
+        if (predicate(node)) {
+            return { ...node, ...updateProps };
+        }
+        return node;
+    });
+}
+
+/**
+ * 更新目标节点及子节点的数据
+ * TODO: 可以优化
+ * @param tree 树类型数据
+ * @param fieldName
+ * @param fieldValue
+ * @param updateProps 更新的属性
+ * @param options
+ */
+export function updateTreeNodeAndAllChildrenNode(
+    tree: Tree = [],
+    fieldName: string,
+    fieldValue: any,
+    updateProps = {},
+    options?: TreeNodeFieldAlias
+): Tree {
+    const { childrenKey = 'children' } = options || {};
+    return cloneDeep(tree).map((item: TreeNode) => {
+        let result = { ...item };
+        const children = result[childrenKey];
+        if (item[fieldName] === fieldValue) {
+            result = { ...result, ...updateProps };
+            if (Array.isArray(children) && children.length) {
+                result[childrenKey] = mapTree(children, (data: TreeNode) => ({ ...data, ...updateProps }));
+            }
+        } else if (Array.isArray(children) && children.length) {
+            result[childrenKey] = updateTreeNodeAndAllChildrenNode(children, fieldName, fieldValue, updateProps);
+        }
+        return result;
+    });
+}
+
+/**
+ * 替换目标节点及父节点
+ * TODO: 可以优化
+ * @param tree
+ * @param fieldName
+ * @param fieldValue
+ * @param updateProps
+ * @param options
+ */
+export function updateTreeNodeAndAllParentNode(
+    tree: Tree = [],
+    fieldName: string,
+    fieldValue: any,
+    updateProps: Record<string, any>,
+    options?: TreeNodeFieldAlias
+): Tree {
+    const { idKey = 'id' } = options || {};
+    const parentPathArray = closestParentItemInTree(
+        tree,
+        (item: TreeNode) => item[fieldName] === fieldValue,
+        true,
+        options
+    );
+    let result = cloneDeep(tree);
+    parentPathArray.forEach((item: TreeNode) => {
+        result = updateTreeNode(result, (node: TreeNode) => node[idKey] === item[idKey], updateProps);
+    });
+    return result;
+}
+
+/**
+ * 删除空的 children 节点
+ * @param tree 树类型数据
+ * @param options 别名配置, 默认值为 { childrenKey: 'children' }
+ */
+export function removeEmptyChildrenTreeNode(tree: Tree, options?: TreeNodeFieldAlias): Tree {
+    const { childrenKey = 'children' } = options || {};
+    return mapTree(tree, (node) => {
+        if (Array.isArray(node[childrenKey]) && node[childrenKey].length) {
+            node[childrenKey] = removeEmptyChildrenTreeNode(node[childrenKey]);
+        } else if (node[childrenKey]) {
+            delete node[childrenKey];
+        }
+        return node;
+    });
+}
+
+/**
  * 过滤树类型数据, 保留匹配节点的父级
  * @param tree 树数据
  * @param predicate 匹配的方法
+ * @param options 别名配置, 默认值为 { childrenKey: 'children' }
  * @returns {*}
  */
-export function filterTree(tree: Tree, predicate: (node: TreeNode) => boolean): Tree {
+export function filterTree(tree: Tree, predicate: (node: TreeNode) => boolean, options?: TreeNodeFieldAlias): Tree {
+    const { childrenKey = 'children' } = options || {};
     return cloneDeep(tree).filter((child: TreeNode) => {
-        if (child.children) {
-            child.children = filterTree(child.children, predicate);
+        if (child[childrenKey]) {
+            child[childrenKey] = filterTree(child[childrenKey], predicate);
             // 如果子节点有匹配的结果, 就直接返回父节点
-            if (child.children && child.children.length) {
+            if (child[childrenKey] && child[childrenKey].length) {
                 return child;
             }
         }
@@ -509,9 +590,8 @@ export function getRightNode(tree: Tree, targetNode: TreeNode, options?: TreeNod
             ? parentNode[childrenKey].findIndex((node: TreeNode) => node[idKey] === targetNode[idKey])
             : -1;
         return parentNode[childrenKey].slice(targetIndex + 1, targetIndex + 2)?.[0];
-    } else {
-        return null;
     }
+    return null;
 }
 
 /**
@@ -528,9 +608,8 @@ export function getAllRightNode(tree: Tree, targetNode: TreeNode, options?: Tree
             ? parentNode[childrenKey].findIndex((node: TreeNode) => node[idKey] === targetNode[idKey])
             : -1;
         return parentNode[childrenKey].slice(targetIndex + 1);
-    } else {
-        return [];
     }
+    return [];
 }
 
 /**
@@ -547,9 +626,8 @@ export function getLeftNode(tree: Tree, targetNode: TreeNode, options?: TreeNode
             ? parentNode[childrenKey].findIndex((node: TreeNode) => node[idKey] === targetNode[idKey])
             : -1;
         return parentNode[childrenKey].slice(targetIndex - 1, targetIndex - 2)?.[0];
-    } else {
-        return null;
     }
+    return null;
 }
 
 /**
@@ -566,7 +644,55 @@ export function getAllLeftNode(tree: Tree, targetNode: TreeNode, options?: TreeN
             ? parentNode[childrenKey].findIndex((node: TreeNode) => node[idKey] === targetNode[idKey])
             : -1;
         return parentNode[childrenKey].slice(0, targetIndex);
-    } else {
-        return [];
     }
+    return [];
+}
+
+/**
+ * 删除空的 children 节点
+ *
+ * @export
+ * @param tree 树类型数据
+ * @param options 别名配置, 默认值为 { childrenKey: 'children' }
+ */
+export function removeEmptyChildren(tree: Tree = [], options?: TreeNodeFieldAlias): Tree {
+    const { childrenKey = 'children' } = options || {};
+    return Array.isArray(tree)
+        ? cloneDeep(tree).map((item) => {
+              const result = { ...item };
+              const { children } = result;
+              if (Array.isArray(children) && children.length) {
+                  result[childrenKey] = removeEmptyChildren(children, options);
+              } else {
+                  delete result[childrenKey];
+              }
+              return result;
+          })
+        : [];
+}
+
+/**
+ * 获取树的深度
+ * @param tree 树类型数据
+ * @param options 别名配置, 默认值为 { childrenKey: 'children' }
+ */
+export function getTreeDepth(tree: Tree, options?: TreeNodeFieldAlias): number {
+    const { childrenKey = 'children' } = options || {};
+    let deep = 0;
+    const fn = (data: Tree, index: number) => {
+        data.forEach((elem: TreeNode) => {
+            if (index > deep) {
+                deep = index;
+            }
+            if (elem[childrenKey]?.length > 0) {
+                fn(elem[childrenKey], deep + 1);
+            }
+        });
+    };
+    if (tree instanceof Array) {
+        fn(tree, 1);
+    } else {
+        fn([tree], 0);
+    }
+    return deep;
 }
