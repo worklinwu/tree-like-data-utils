@@ -15,7 +15,7 @@ function _normalizeTreePath(path: string | string[], pathSeparator: string, chil
     const fullChildren = new RegExp(childrenKey, 'gi');
     return path
         .replace(fullChildren, '')
-        .replace(/\[(\d+)\]/g, '.$1')
+        .replace(/\[(\d+)]/g, '.$1')
         .split(pathSeparator)
         .filter((p) => p !== '');
 }
@@ -318,7 +318,7 @@ export function mapTree(tree: Tree, callbackFn: (node: TreeNode) => TreeNode, op
     const treeClone = tree instanceof Array ? cloneDeep(tree) : [cloneDeep(tree)];
     return treeClone.map((item: TreeNode) => {
         if (item[childrenKey]) {
-            item[childrenKey] = mapTree(item[childrenKey], callbackFn);
+            item[childrenKey] = mapTree(item[childrenKey], callbackFn, options);
         }
         return callbackFn(item);
     });
@@ -339,7 +339,7 @@ export function sortTree(
     let treeClone = tree instanceof Array ? cloneDeep(tree) : [cloneDeep(tree)];
     treeClone = treeClone.map((item: TreeNode) => {
         if (item[childrenKey]) {
-            item[childrenKey] = sortTree(item[childrenKey], compareFn);
+            item[childrenKey] = sortTree(item[childrenKey], compareFn, options);
         }
         return item;
     });
@@ -398,13 +398,12 @@ export function closestParentItemInTree(
         if (hasExist) {
             result.unshift(node);
             return true;
-        } else {
-            const matchResult = predicate(node);
-            if (matchResult && isContainerTarget) {
-                result.unshift(node);
-            }
-            return matchResult;
         }
+        const matchResult = predicate(node);
+        if (matchResult && isContainerTarget) {
+            result.unshift(node);
+        }
+        return matchResult;
     };
     if (tree instanceof Array) {
         tree.forEach((item) => traverseFn(item));
@@ -524,7 +523,7 @@ export function removeEmptyChildrenTreeNode(tree: Tree, options?: TreeNodeFieldA
     const { childrenKey = 'children' } = options || {};
     return mapTree(tree, (node) => {
         if (Array.isArray(node[childrenKey]) && node[childrenKey].length) {
-            node[childrenKey] = removeEmptyChildrenTreeNode(node[childrenKey]);
+            node[childrenKey] = removeEmptyChildrenTreeNode(node[childrenKey], options);
         } else if (node[childrenKey]) {
             delete node[childrenKey];
         }
@@ -543,13 +542,40 @@ export function filterTree(tree: Tree, predicate: (node: TreeNode) => boolean, o
     const { childrenKey = 'children' } = options || {};
     return cloneDeep(tree).filter((child: TreeNode) => {
         if (child[childrenKey]) {
-            child[childrenKey] = filterTree(child[childrenKey], predicate);
+            child[childrenKey] = filterTree(child[childrenKey], predicate, options);
             // 如果子节点有匹配的结果, 就直接返回父节点
             if (child[childrenKey] && child[childrenKey].length) {
                 return child;
             }
         }
         return predicate(child);
+    });
+}
+
+/**
+ * 过滤树类型数据, 保留匹配节点的父级. 遍历函数的第二个参数是父节点
+ * @param tree 树数据
+ * @param predicate 匹配的方法
+ * @param parentNode 父节点
+ * @param options 别名配置, 默认值为 { childrenKey: 'children' }
+ * @returns {*}
+ */
+export function filterTreeWithParentNode(
+    tree: Tree,
+    predicate: (node: TreeNode, parentNode: TreeNode | null | undefined) => boolean,
+    parentNode?: TreeNode | null,
+    options?: TreeNodeFieldAlias
+): Tree {
+    const { childrenKey = 'children' } = options || {};
+    return cloneDeep(tree).filter((child: TreeNode) => {
+        if (child[childrenKey]) {
+            child[childrenKey] = filterTreeWithParentNode(child[childrenKey], predicate, parentNode, options);
+            // 如果子节点有匹配的结果, 就直接返回父节点
+            if (child[childrenKey] && child[childrenKey].length) {
+                return child;
+            }
+        }
+        return predicate(child, parentNode);
     });
 }
 
@@ -586,7 +612,7 @@ export function getRightNode(tree: Tree, targetNode: TreeNode, options?: TreeNod
     const { idKey = 'id', childrenKey = 'children' } = options || {};
     const parentNode = findParentTreeNode(tree, targetNode, options);
     if (parentNode) {
-        const targetIndex = parentNode
+        const targetIndex: number = parentNode
             ? parentNode[childrenKey].findIndex((node: TreeNode) => node[idKey] === targetNode[idKey])
             : -1;
         return parentNode[childrenKey].slice(targetIndex + 1, targetIndex + 2)?.[0];
@@ -604,7 +630,7 @@ export function getAllRightNode(tree: Tree, targetNode: TreeNode, options?: Tree
     const { idKey = 'id', childrenKey = 'children' } = options || {};
     const parentNode = findParentTreeNode(tree, targetNode, options);
     if (parentNode) {
-        const targetIndex = parentNode
+        const targetIndex: number = parentNode
             ? parentNode[childrenKey].findIndex((node: TreeNode) => node[idKey] === targetNode[idKey])
             : -1;
         return parentNode[childrenKey].slice(targetIndex + 1);
@@ -695,4 +721,53 @@ export function getTreeDepth(tree: Tree, options?: TreeNodeFieldAlias): number {
         fn([tree], 0);
     }
     return deep;
+}
+
+/**
+ * 父节点影响子节点
+ */
+export function effectSubNode(
+    tree: Tree = [],
+    fieldName: string,
+    fieldValue: any,
+    effectObj = {},
+    options?: TreeNodeFieldAlias
+): Tree {
+    const { childrenKey = 'children' } = options || {};
+    return cloneDeep(tree).map((item: Record<string, any>) => {
+        let result = { ...item };
+        const children = result[childrenKey];
+        if (item[fieldName] === fieldValue) {
+            result = { ...result, ...effectObj };
+            if (Array.isArray(children) && children.length) {
+                result[childrenKey] = mapTree(children, (data) => ({ ...data, ...effectObj }));
+            }
+        } else if (Array.isArray(children) && children.length) {
+            result[childrenKey] = effectSubNode(children, fieldName, fieldValue, effectObj, options);
+        }
+        return result;
+    });
+}
+
+/**
+ * 子节点影响父节点
+ */
+export function effectParentNode(
+    tree: Tree = [],
+    fieldName: string,
+    fieldValue: any,
+    effectObj: Record<string, any>,
+    options?: TreeNodeFieldAlias
+): Tree {
+    const parentPathArray = closestParentItemInTree(tree, (item) => item[fieldName] === fieldValue, true, options);
+    const { idKey = 'id' } = options || {};
+    let result = cloneDeep(tree);
+    parentPathArray.forEach((item) => {
+        result = replaceTreeNode(
+            result,
+            (node) => node[idKey] === item[idKey],
+            (node) => ({ ...node, ...effectObj })
+        );
+    });
+    return result;
 }
