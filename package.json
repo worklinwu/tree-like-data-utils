@@ -1,7 +1,7 @@
 {
   "private": true,
-  "name": "tree-like-data-utils-dumi",
-  "version": "1.0.0",
+  "name": "tree-like-data-utils",
+  "version": "1.0.1",
   "scripts": {
     "start": "dumi dev",
     "docs:build": "rimraf docs-dist && dumi build",
