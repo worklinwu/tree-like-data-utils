@@ -5,7 +5,7 @@ import { TraverseOptions, TraverseType, Tree, TreeNode, TreeNodeFieldAlias, Tree
 function _normalizeObjectPath(path: string | string[]): string[] {
     if (path instanceof Array) return path;
     return path
-        .replace(/\[(\d+)\]/g, '.$1')
+        .replace(/\[(\d+)]/g, '.$1')
         .split('.')
         .filter((p) => p !== '');
 }
@@ -308,6 +308,21 @@ export function findIndexInSiblingNode(tree: Tree, targetNode: TreeNode, options
 }
 
 /**
+ * 获取所有兄弟节点
+ * @param tree 树数据
+ * @param targetNode 目标节点
+ * @param options 别名配置, 默认值为 { idKey: 'id', childrenKey: 'children' }
+ */
+export function findSiblingNodes(tree: Tree, targetNode: TreeNode, options?: TreeNodeFieldAlias): any[] {
+    const { idKey = 'id', childrenKey = 'children' } = options || {};
+    const parentNode = findParentTreeNode(tree, targetNode, options);
+    if (parentNode) {
+        return parentNode[childrenKey].filter((item: Record<string, any>) => item[idKey] !== targetNode[idKey]);
+    }
+    return [targetNode];
+}
+
+/**
  * 遍历树类型数据, 并返回新的对象
  * @param tree 树数据
  * @param callbackFn 遍历函数
@@ -316,11 +331,35 @@ export function findIndexInSiblingNode(tree: Tree, targetNode: TreeNode, options
 export function mapTree(tree: Tree, callbackFn: (node: TreeNode) => TreeNode, options?: TreeNodeFieldAlias): Tree {
     const { childrenKey = 'children' } = options || {};
     const treeClone = tree instanceof Array ? cloneDeep(tree) : [cloneDeep(tree)];
-    return treeClone.map((item: TreeNode) => {
-        if (item[childrenKey]) {
-            item[childrenKey] = mapTree(item[childrenKey], callbackFn, options);
+    return treeClone.map((child: TreeNode) => {
+        if (child[childrenKey]) {
+            child[childrenKey] = mapTree(child[childrenKey], callbackFn, options);
         }
-        return callbackFn(item);
+        return callbackFn(child);
+    });
+}
+
+/**
+ * 遍历树类型数据, 并返回新的对象
+ * @param tree 树数据
+ * @param callbackFn 遍历函数
+ * @param parentNode 父级节点
+ * @param options 别名配置, 默认值为 { childrenKey: 'children' }
+ */
+export function mapTreeWithParent(
+    tree: Tree,
+    callbackFn: (node: TreeNode, parentNode: TreeNode | null | undefined) => TreeNode,
+    parentNode?: TreeNode | null,
+    options?: TreeNodeFieldAlias
+): Tree {
+    const { childrenKey = 'children' } = options || {};
+    const treeClone = tree instanceof Array ? cloneDeep(tree) : [cloneDeep(tree)];
+    return treeClone.map((child: TreeNode) => {
+        const currentNode = callbackFn(child, parentNode);
+        if (currentNode[childrenKey]) {
+            currentNode[childrenKey] = mapTreeWithParent(currentNode[childrenKey], callbackFn, currentNode, options);
+        }
+        return currentNode;
     });
 }
 
@@ -344,6 +383,46 @@ export function sortTree(
         return item;
     });
     return treeClone.sort(compareFn);
+}
+
+/**
+ * 替换树节点数据
+ * @param tree 树类型数据
+ * @param predicate 匹配的方法
+ * @param replaceNode 要替换的值
+ * @returns {[]}
+ */
+export function replaceTreeNode(
+    tree: Tree,
+    predicate: (node: TreeNode) => boolean,
+    replaceNode: ((node: TreeNode) => TreeNode) | TreeNode
+): Tree {
+    return mapTree(tree, (node) => {
+        if (predicate(node)) {
+            if (replaceNode instanceof Function) {
+                return replaceNode(node);
+            }
+            return replaceNode;
+        }
+        return node;
+    });
+}
+
+/**
+ * 删除空的 children 节点
+ * @param tree 树类型数据
+ * @param options 别名配置, 默认值为 { childrenKey: 'children' }
+ */
+export function removeEmptyChildrenTreeNode(tree: Tree, options?: TreeNodeFieldAlias): Tree {
+    const { childrenKey = 'children' } = options || {};
+    return mapTree(tree, (node) => {
+        if (Array.isArray(node[childrenKey]) && node[childrenKey].length) {
+            node[childrenKey] = removeEmptyChildrenTreeNode(node[childrenKey], options);
+        } else if (node[childrenKey]) {
+            delete node[childrenKey];
+        }
+        return node;
+    });
 }
 
 /**
@@ -414,26 +493,18 @@ export function closestParentItemInTree(
 }
 
 /**
- * 替换树节点数据
- * @param tree 树类型数据
- * @param predicate 匹配的方法
- * @param replaceNode 要替换的值
- * @returns {[]}
+ * 查找所有子节点
+ * @param tree
+ * @param predicate
+ * @param options
  */
-export function replaceTreeNode(
+export function findAllChildrenInTree(
     tree: Tree,
     predicate: (node: TreeNode) => boolean,
-    replaceNode: ((node: TreeNode) => TreeNode) | TreeNode
-): Tree {
-    return mapTree(tree, (node) => {
-        if (predicate(node)) {
-            if (replaceNode instanceof Function) {
-                return replaceNode(node);
-            }
-            return replaceNode;
-        }
-        return node;
-    });
+    options?: TreeNodeFieldAlias
+): TreeNode[] {
+    const { childrenKey = 'children' } = options || {};
+    return flattenTree(findOneInTree(tree, predicate, 'breath', options)?.[childrenKey] || []);
 }
 
 /**
@@ -515,23 +586,6 @@ export function updateTreeNodeAndAllParentNode(
 }
 
 /**
- * 删除空的 children 节点
- * @param tree 树类型数据
- * @param options 别名配置, 默认值为 { childrenKey: 'children' }
- */
-export function removeEmptyChildrenTreeNode(tree: Tree, options?: TreeNodeFieldAlias): Tree {
-    const { childrenKey = 'children' } = options || {};
-    return mapTree(tree, (node) => {
-        if (Array.isArray(node[childrenKey]) && node[childrenKey].length) {
-            node[childrenKey] = removeEmptyChildrenTreeNode(node[childrenKey], options);
-        } else if (node[childrenKey]) {
-            delete node[childrenKey];
-        }
-        return node;
-    });
-}
-
-/**
  * 过滤树类型数据, 保留匹配节点的父级
  * @param tree 树数据
  * @param predicate 匹配的方法
@@ -569,7 +623,7 @@ export function filterTreeWithParentNode(
     const { childrenKey = 'children' } = options || {};
     return cloneDeep(tree).filter((child: TreeNode) => {
         if (child[childrenKey]) {
-            child[childrenKey] = filterTreeWithParentNode(child[childrenKey], predicate, parentNode, options);
+            child[childrenKey] = filterTreeWithParentNode(child[childrenKey], predicate, child, options);
             // 如果子节点有匹配的结果, 就直接返回父节点
             if (child[childrenKey] && child[childrenKey].length) {
                 return child;
@@ -591,12 +645,10 @@ export function completionTreeNodePid(tree: Tree, options?: TreeNodeFieldAlias):
         treeDataClone[i][childrenKey] = completionTreeNodePid(
             treeDataClone[i][childrenKey] &&
                 treeDataClone[i][childrenKey].length &&
-                treeDataClone[i][childrenKey].map((item: TreeNode) => {
-                    return {
-                        ...item,
-                        [parentIdKey]: item[parentIdKey] || treeDataClone[i][idKey]
-                    };
-                })
+                treeDataClone[i][childrenKey].map((item: TreeNode) => ({
+                    ...item,
+                    [parentIdKey]: item[parentIdKey] || treeDataClone[i][idKey]
+                }))
         );
     }
     return treeDataClone;
